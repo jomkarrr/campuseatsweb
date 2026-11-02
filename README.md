@@ -172,8 +172,4 @@ Before launching into production, replace the following placeholder items:
 
 ---
 
-## 📬 Contact & Support
 
-For queries, partnerships, or stall onboarding at VIT-AP:
-- **Email**: [info@campuseats.com](mailto:info@campuseats.com)
-- **Location**: VIT-AP Campus, Amaravati, Andhra Pradesh, India
