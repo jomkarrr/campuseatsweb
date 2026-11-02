@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Required by @cloudflare/next-on-pages: all dynamic routes must run on the
+// Edge Runtime (no Node.js APIs are used here — supabase-js uses fetch).
+export const runtime = "edge";
+
 // Server-only env vars (set these in Cloudflare Pages -> Settings -> Environment variables).
 // SUPABASE_URL can fall back to NEXT_PUBLIC_SUPABASE_URL if you already have that set.
 const SUPABASE_URL =
