@@ -75,11 +75,13 @@ The visual design is inspired by the tactile, playful aesthetic of the Hotbite F
 - **Icons**: Lucide React + custom SVGs
 - **Smooth Scroll**: Lenis
 - **Animations**: Framer Motion & Tailwind Keyframes
+- **Waitlist Storage**: Supabase (Postgres `waitlist` table, Edge-safe via `@supabase/supabase-js`)
+- **Hosting**: Cloudflare Pages via `@cloudflare/next-on-pages` (Edge Runtime)
 
 ```
 src/
 ├── app/
-│   ├── api/waitlist/route.ts      # Early access waitlist endpoint
+│   ├── api/waitlist/route.ts      # Early access waitlist endpoint (Supabase-backed, Edge Runtime)
 │   ├── globals.css                # Fonts, custom utilities, grain texture
 │   ├── layout.tsx                 # SEO meta, OpenGraph, JSON-LD, Lenis
 │   └── page.tsx                   # Main 17-section assembler & modals
@@ -101,6 +103,29 @@ src/
     └── utils.ts                   # Tailwind merge utility
 ```
 
+Repo root also contains `supabase-waitlist-table.sql` (one-time Supabase setup) and `.npmrc` (`legacy-peer-deps=true`, required for the Cloudflare adapter's dependency tree).
+
+---
+
+## ☁️ Deployment (Cloudflare Pages)
+
+The site is deployed on **Cloudflare Pages** using the `@cloudflare/next-on-pages` adapter (pinned to `1.13.14`).
+
+### One-time setup
+1. **Supabase**: in the Supabase dashboard → SQL Editor, run `supabase-waitlist-table.sql` (repo root) once to create the `waitlist` table.
+2. **Cloudflare Pages**: connect this repo, then set:
+   - Build command: `npx @cloudflare/next-on-pages@1.13.14`
+   - Build output directory: `.vercel/output/static`
+3. **Environment variables** (Pages → Settings → Variables and secrets):
+   - `SUPABASE_URL` — Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` — Supabase `service_role` key (**encrypt it**; never expose publicly)
+
+Redeploy after adding the variables.
+
+### Notes
+- `/api/waitlist` runs on the Edge Runtime and stores signups in the Supabase `waitlist` table (service-role key, server-side only). It returns `503` with a clear message if the env vars are missing.
+- Every push to `main` triggers a production deploy; pull requests get preview deployments.
+
 ---
 
 ## ⚡ Getting Started
@@ -112,8 +137,8 @@ src/
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/Kshaurya-07/CampusEats.git
-cd CampusEats
+git clone https://github.com/jomkarrr/campuseatsweb.git
+cd campuseatsweb
 
 # Install dependencies
 npm install
