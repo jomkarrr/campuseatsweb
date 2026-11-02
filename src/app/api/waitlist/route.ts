@@ -1,49 +1,53 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
-interface WaitlistEntry {
-  id: string;
-  name: string;
-  contact: string;
-  role: "student" | "outlet" | "delivery";
-  blockOrOutlet?: string;
-  createdAt: string;
-}
+// Server-only env vars (set these in Cloudflare Pages -> Settings -> Environment variables).
+// SUPABASE_URL can fall back to NEXT_PUBLIC_SUPABASE_URL if you already have that set.
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const DATA_FILE = path.join(process.cwd(), "src", "data", "waitlist-records.json");
-
-function getRecords(): WaitlistEntry[] {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, "utf-8");
-      return JSON.parse(data);
-    }
-  } catch (err) {
-    console.error("Failed to read waitlist records:", err);
-  }
-  return [];
-}
-
-function saveRecords(records: WaitlistEntry[]) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Failed to write waitlist records:", err);
-  }
+function getSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 export async function GET() {
-  const records = getRecords();
-  return NextResponse.json({
-    success: true,
-    count: records.length,
-    // Only return real count; if empty, client can opt to show or hide
-  });
+  const supabase = getSupabase();
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: "Waitlist storage is not configured." },
+      { status: 503 }
+    );
+  }
+
+  const { count, error } = await supabase
+    .from("waitlist")
+    .select("*", { count: "exact", head: true });
+
+  if (error) {
+    console.error("Waitlist count error:", error);
+    return NextResponse.json(
+      { success: false, error: "Unable to fetch waitlist count." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, count: count ?? 0 });
 }
 
 export async function POST(request: Request) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: "Waitlist storage is not configured." },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const { name, contact, role, blockOrOutlet } = body;
 
@@ -59,7 +63,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Please provide a valid VIT-AP email address or 10-digit mobile number.",
+          error:
+            "Please provide a valid VIT-AP email address or 10-digit mobile number.",
         },
         { status: 400 }
       );
@@ -70,30 +75,45 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Please select your role (Student, Campus Outlet, or Delivery Partner).",
+          error:
+            "Please select your role (Student, Campus Outlet, or Delivery Partner).",
         },
         { status: 400 }
       );
     }
 
-    const newEntry: WaitlistEntry = {
-      id: `w_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      name: name.trim(),
-      contact: contact.trim(),
-      role,
-      blockOrOutlet: blockOrOutlet ? String(blockOrOutlet).trim() : undefined,
-      createdAt: new Date().toISOString(),
-    };
+    const { data, error } = await supabase
+      .from("waitlist")
+      .insert({
+        name: name.trim(),
+        contact: contact.trim(),
+        role,
+        block_or_outlet: blockOrOutlet ? String(blockOrOutlet).trim() : null,
+      })
+      .select("id")
+      .single();
 
-    const records = getRecords();
-    records.push(newEntry);
-    saveRecords(records);
+    if (error || !data) {
+      console.error("Waitlist insert error:", error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to process registration. Please try again.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const { count } = await supabase
+      .from("waitlist")
+      .select("*", { count: "exact", head: true });
 
     return NextResponse.json(
       {
         success: true,
-        message: "You've successfully joined the CampusEats early access waitlist!",
-        waitlistNumber: records.length,
+        message:
+          "You've successfully joined the CampusEats early access waitlist!",
+        waitlistNumber: count ?? 1,
       },
       { status: 201 }
     );
